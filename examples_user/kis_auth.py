@@ -31,23 +31,34 @@ from Crypto.Util.Padding import unpad
 
 clearConsole = lambda: os.system("cls" if os.name in ("nt", "dos") else "clear")
 
-key_bytes = 32
-config_root = os.path.join(os.path.expanduser("~"), "KIS", "config")
-# config_root = "$HOME/KIS/config/"  # 토큰 파일이 저장될 폴더, 제3자가 찾기 어렵도록 경로 설정하시기 바랍니다.
-# token_tmp = config_root + 'KIS000000'  # 토큰 로컬저장시 파일 이름 지정, 파일이름을 토큰값이 유추가능한 파일명은 삼가바랍니다.
-# token_tmp = config_root + 'KIS' + datetime.today().strftime("%Y%m%d%H%M%S")  # 토큰 로컬저장시 파일명 년월일시분초
-token_tmp = os.path.join(
-    config_root, f"KIS{datetime.today().strftime("%Y%m%d")}"
-)  # 토큰 로컬저장시 파일명 년월일
+# 프로젝트 루트 경로(open-trading-api)를 찾습니다.
+_root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+config_root = os.path.join(_root_path, "config")
 
-# 접근토큰 관리하는 파일 존재여부 체크, 없으면 생성
-if os.path.exists(token_tmp) == False:
-    f = open(token_tmp, "w+")
+# 폴더가 없으면 생성합니다.
+if not os.path.exists(config_root):
+    os.makedirs(config_root, exist_ok=True)
 
-# 앱키, 앱시크리트, 토큰, 계좌번호 등 저장관리, 자신만의 경로와 파일명으로 설정하시기 바랍니다.
-# pip install PyYAML (패키지설치)
-with open(os.path.join(config_root, "kis_devlp.yaml"), encoding="UTF-8") as f:
+# 설정 파일 위치 확인 및 로드
+_config_file = os.path.join(config_root, "kis_devlp.yaml")
+if not os.path.exists(_config_file):
+    _alt_config_file = os.path.join(_root_path, "kis_devlp.yaml")
+    if os.path.exists(_alt_config_file):
+        import shutil
+        shutil.copy(_alt_config_file, _config_file)
+    else:
+        raise FileNotFoundError(f"설정 파일을 찾을 수 없습니다: {_config_file}")
+
+with open(_config_file, encoding="UTF-8") as f:
     _cfg = yaml.load(f, Loader=yaml.FullLoader)
+
+# 토큰 파일 경로를 서버 종류에 따라 동적으로 결정하는 함수
+def get_token_file(svr="prod"):
+    today = datetime.today().strftime("%Y%m%d")
+    return os.path.join(config_root, f"token_{svr}_{today}")
+
+# 초기값 (auth 함수에서 업데이트됨)
+token_tmp = get_token_file("prod")
 
 _TRENV = tuple()
 _last_auth_time = datetime.now()
@@ -195,6 +206,11 @@ def auth(svr="prod", product=_cfg["my_prod"], url=None):
     p = {
         "grant_type": "client_credentials",
     }
+    
+    # 서버 타입에 따라 토큰 파일 경로를 업데이트합니다.
+    global token_tmp
+    token_tmp = get_token_file(svr)
+    
     # 개인 환경파일 "kis_devlp.yaml" 파일을 참조하여 앱키, 앱시크리트 정보 가져오기
     # 개인 환경파일명과 위치는 고객님만 아는 위치로 설정 바랍니다.
     if svr == "prod":  # 실전투자
